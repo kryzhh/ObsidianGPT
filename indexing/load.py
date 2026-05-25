@@ -1,8 +1,35 @@
 import os
 import re
+from datetime import datetime
 from langchain_core.documents import Document
 
-TECHNICAL_FOLDERS = ["cloud", "dsa", "webd"]
+TECHNICAL_FOLDERS = ["cloud", "dsa", "webd", "projects", "rags"]
+
+def normalize_date(date_str):
+    """Always store dates as DD/MM/YYYY regardless of input format."""
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(date_str, fmt).strftime("%d/%m/%Y")
+        except ValueError:
+            continue
+    return date_str
+
+def extract_headings(content):
+    """Extract all headings (h1, h2, h3) from markdown."""
+    headings = re.findall(r'^#{1,3}\s+(.+)', content, re.MULTILINE)
+    return [h.strip() for h in headings]
+
+def extract_all_dates(content):
+    """Extract all dates from file, normalized to DD/MM/YYYY."""
+    raw_dates = re.findall(r'\b(\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4})\b', content)
+    seen = set()
+    normalized = []
+    for d in raw_dates:
+        n = normalize_date(d)
+        if n not in seen:
+            seen.add(n)
+            normalized.append(n)
+    return normalized
 
 def load_file(filepath):
     if not filepath.endswith(".md"):
@@ -14,21 +41,25 @@ def load_file(filepath):
     if not content.strip():
         return None
 
-    title_match = re.search(r'^#\s+(.+)', content, re.MULTILINE)
-    title = title_match.group(1).strip() if title_match else os.path.basename(filepath).replace(".md", "")
-
-    date_match = re.search(r'\b(\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2})\b', content)
-    date = date_match.group(1) if date_match else None
-
-    # tag as technical or personal based on folder
+    filename = os.path.basename(filepath).replace(".md", "")
     note_type = "technical" if any(f in filepath for f in TECHNICAL_FOLDERS) else "personal"
+
+    # extract all headings
+    headings = extract_headings(content)
+    primary_title = headings[0] if headings else filename
+
+    # extract all dates normalized
+    all_dates = extract_all_dates(content)
+    primary_date = all_dates[0] if all_dates else "unknown"
 
     metadata = {
         "source": filepath,
-        "title": title,
-        "date": date if date else "unknown",
-        "filename": os.path.basename(filepath),
-        "type": note_type        # clean tag we can filter on reliably
+        "filename": filename,                        # e.g. "poems"
+        "title": primary_title,                      # first heading
+        "headings": ", ".join(headings),             # all headings as searchable string
+        "date": primary_date,                        # first date (for single-date notes)
+        "all_dates": ", ".join(all_dates),           # all dates (for multi-poem files)
+        "type": note_type,
     }
 
     return [Document(page_content=content, metadata=metadata)]

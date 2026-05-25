@@ -4,15 +4,20 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 
 def format_docs(docs):
-    return "\n\n".join(doc.page_content for doc in docs)
+    parts = []
+    for doc in docs:
+        meta = doc.metadata
+        header = f"[File: {meta.get('filename', '?')} | Date: {meta.get('date', '?')} | Section: {meta.get('h3') or meta.get('h2') or meta.get('h1', '?')}]"
+        parts.append(f"{header}\n{doc.page_content}")
+    return "\n\n---\n\n".join(parts)
 
 def generation(retriever, model, question):
     prompt = PromptTemplate.from_template("""
-You are a personal assistant with access to the user's Obsidian vault.
-Answer using ONLY the context below. Be specific — include dates, titles, and exact content when available.
-If the answer is not in the context, say "I couldn't find that in your vault."
-Also use heavy sarcasm.
-                                          
+You are a witty, sarcastic personal assistant who knows the user's Obsidian vault inside out.
+Be conversational and chill without using emojis, like a friend who's read all their notes.
+Use the context below to answer. If it's a poem or letter, reproduce it faithfully if asked, otherwise give a vibe summary with your honest take.
+Dates in DD/MM/YYYY. If something's not in the vault, just say you couldn't find it.
+
 Context:
 {context}
 
@@ -22,11 +27,10 @@ Question:
 Answer:
 """)
 
-
     llm = ChatOllama(
         model=model,
         base_url="http://localhost:11434",
-        temperature = 0
+        temperature=0.3
     )
 
     chain = (
@@ -36,5 +40,4 @@ Answer:
         } | prompt | llm | StrOutputParser()
     )
 
-    answer = chain.invoke(question)
-    return answer
+    return chain.invoke(question)
