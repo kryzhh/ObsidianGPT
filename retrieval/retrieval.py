@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from langchain_core.runnables import RunnableLambda
 
 TECHNICAL_FOLDERS = ["cloud", "dsa", "webd", "projects", "rags"]
 
@@ -27,6 +28,39 @@ def normalize_date(date_str):
             continue
     return date_str
 
+
+def _extract_dates_from_metadata(metadata):
+    # Return normalized dates from metadata as exact tokens (not substrings).
+    dates = []
+    all_dates = metadata.get("all_dates", "")
+
+    if isinstance(all_dates, str) and all_dates.strip():
+        dates.extend([d.strip() for d in all_dates.split(",") if d.strip()])
+
+    primary_date = metadata.get("date")
+    if isinstance(primary_date, str) and primary_date.strip() and primary_date != "unknown":
+        dates.append(primary_date.strip())
+
+    return {normalize_date(d) for d in dates}
+
+
+def _date_filtered_retriever(vectorstore, normalized_date):
+    # Retrieve broadly, then enforce exact date membership in Python.
+    base_retriever = vectorstore.as_retriever(
+        search_type="similarity",
+        search_kwargs={"k": 20}
+    )
+
+    def _invoke(query):
+        docs = base_retriever.invoke(query)
+        filtered = [
+            doc for doc in docs
+            if normalized_date in _extract_dates_from_metadata(doc.metadata)
+        ]
+        return filtered[:6]
+
+    return RunnableLambda(_invoke)
+
 def retrieve(vectorstore, query):
     query_lower = query.lower()
 
@@ -41,11 +75,7 @@ def retrieve(vectorstore, query):
 
     if date_match:
         normalized = normalize_date(date_match.group(1))
-        search_kwargs = {
-            "k": 6,
-            "filter": {"all_dates": {"$contains": normalized}}
-        }
-        search_type = "similarity"
+        return _date_filtered_retriever(vectorstore, normalized)
 
     elif mentioned_filename:
         # user mentioned a specific file — filter by filename
@@ -62,7 +92,7 @@ def retrieve(vectorstore, query):
         }
         search_type = "mmr"
 
-    elif is_personal and not is_personal:
+    elif is_personal and not is_technical:
         search_kwargs = {
             "k": 4,
             "filter": {"type": "personal"}
