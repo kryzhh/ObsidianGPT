@@ -13,8 +13,8 @@ def chunk(docs):
 
     # then split oversized sections by character count
     char_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=5000,
-        chunk_overlap=1000
+        chunk_size=1200,
+        chunk_overlap=300
     )
 
     all_chunks = []

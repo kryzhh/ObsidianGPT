@@ -1,5 +1,6 @@
 import os
 import re
+from hashlib import sha256
 from datetime import datetime
 from langchain_core.documents import Document
 
@@ -35,31 +36,36 @@ def load_file(filepath):
     if not filepath.endswith(".md"):
         return None
 
-    with open(filepath, 'r', encoding='utf-8') as f:
-        content = f.read()
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
 
-    if not content.strip():
+        if not content.strip():
+            return None
+
+        filename = os.path.basename(filepath).replace(".md", "")
+        note_type = "technical" if any(f in filepath for f in TECHNICAL_FOLDERS) else "personal"
+
+        # extract all headings
+        headings = extract_headings(content)
+        primary_title = headings[0] if headings else filename
+
+        # extract all dates normalized
+        all_dates = extract_all_dates(content)
+        primary_date = all_dates[0] if all_dates else "unknown"
+
+        metadata = {
+            "source": filepath,
+            "filename": filename,                        # e.g. "poems"
+            "title": primary_title,                      # first heading
+            "headings": ", ".join(headings),             # all headings as searchable string
+            "date": primary_date,                        # first date (for single-date notes)
+            "all_dates": ", ".join(all_dates),           # all dates (for multi-poem files)
+            "type": note_type,
+            "content_hash": sha256(content.encode("utf-8")).hexdigest(),
+        }
+
+        return [Document(page_content=content, metadata=metadata)]
+    except (OSError, UnicodeError) as exc:
+        print(f"Skipping unreadable file {filepath}: {exc}")
         return None
-
-    filename = os.path.basename(filepath).replace(".md", "")
-    note_type = "technical" if any(f in filepath for f in TECHNICAL_FOLDERS) else "personal"
-
-    # extract all headings
-    headings = extract_headings(content)
-    primary_title = headings[0] if headings else filename
-
-    # extract all dates normalized
-    all_dates = extract_all_dates(content)
-    primary_date = all_dates[0] if all_dates else "unknown"
-
-    metadata = {
-        "source": filepath,
-        "filename": filename,                        # e.g. "poems"
-        "title": primary_title,                      # first heading
-        "headings": ", ".join(headings),             # all headings as searchable string
-        "date": primary_date,                        # first date (for single-date notes)
-        "all_dates": ", ".join(all_dates),           # all dates (for multi-poem files)
-        "type": note_type,
-    }
-
-    return [Document(page_content=content, metadata=metadata)]

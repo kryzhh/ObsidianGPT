@@ -11,7 +11,8 @@ PERSONAL_KEYWORDS = [
     "issue", "issues", "problem", "struggle", "conflict",
     "worried", "worry", "anxiety", "sad", "happy", "angry",
     "frustrated", "confused", "lost", "stuck", "my", "i am",
-    "im", "i've", "ive", "i feel", "i think", "i want", "i need"
+    "im", "i've", "ive", "i feel", "i think", "i want", "i need",
+    "life", "maybe"
 ]
 
 TECHNICAL_KEYWORDS = [

@@ -4,3 +4,4 @@ venv/*
 chroma.db
 __pycache__
 index_state.json
+models/
