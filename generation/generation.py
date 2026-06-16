@@ -1,6 +1,5 @@
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import PromptTemplate
-from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 
 def format_docs(docs):
@@ -11,7 +10,8 @@ def format_docs(docs):
         parts.append(f"{header}\n{doc.page_content}")
     return "\n\n---\n\n".join(parts)
 
-def generation(retriever, model, question):
+
+def generation(retriever, model, question, stream=False):
     prompt = PromptTemplate.from_template("""
 You are a witty, sarcastic personal assistant who knows the user's Obsidian vault inside out.
 Be conversational and chill without using emojis, like a friend who's read all their notes.
@@ -37,7 +37,14 @@ Answer:
         {
             "context": retriever | format_docs,
             "question": RunnablePassthrough()
-        } | prompt | llm | StrOutputParser()
+        } | prompt | llm
     )
 
-    return chain.invoke(question)
+    if not stream:
+        return chain.invoke(question)
+
+    # Chunk Streaming for that GPT Feel
+    for chunk in chain.stream(question):
+        # chunk is an AIMessageChunk
+        if hasattr(chunk, "content") and chunk.content:
+            yield chunk.content
