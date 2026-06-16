@@ -5,3 +5,4 @@ chroma.db
 __pycache__
 index_state.json
 node_modules
+.vscode
