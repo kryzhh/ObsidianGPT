@@ -71,13 +71,22 @@ pre code {
   }
 }
 
+button:hover {
+  background: #3a3d4a;
+}
+
+pre button {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+pre:hover button {
+  opacity: 1;
+}
+
 #root {
   width: 100% !important;
   max-width: none !important;
   margin: 0 !important;
   border: none !important;
-}
-
-.body {
-  background-color: #343541;
 }
