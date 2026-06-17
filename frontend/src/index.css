@@ -1,4 +1,6 @@
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   margin: 0;
   padding: 0;
@@ -56,9 +58,17 @@ pre code {
 }
 
 @keyframes blink {
-  0% { opacity: 0.2; }
-  20% { opacity: 1; }
-  100% { opacity: 0.2; }
+  0% {
+    opacity: 0.2;
+  }
+
+  20% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0.2;
+  }
 }
 
 #root {
@@ -66,4 +76,8 @@ pre code {
   max-width: none !important;
   margin: 0 !important;
   border: none !important;
+}
+
+.body {
+  background-color: #343541;
 }
