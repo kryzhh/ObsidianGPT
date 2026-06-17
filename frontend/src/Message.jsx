@@ -3,7 +3,7 @@ import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { useState } from "react";
 
-/* 🔥 Separate component for code blocks */
+/* Separate component for code blocks */
 function CodeBlock({ className, children }) {
   const [copied, setCopied] = useState(false);
 
