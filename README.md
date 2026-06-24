@@ -60,7 +60,7 @@ python app.py
 ```
 
 #### 3. Frontend Setup
-#####Open a new terminal:
+##### Open a new terminal:
 
 ```bash
 cd frontend
