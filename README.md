@@ -1,6 +1,10 @@
-# ObsidianGPT
+# Mockingbird 
 
-Local RAG chat over an Obsidian vault.
+**What if you could talk to your second brain?**
+
+
+Mockingbird is a local-first AI assistant that lets you have natural conversations with your personal knowledge base. Built on a RAG (Retrieval-Augmented Generation) pipeline using LangChain, ChromaDB, and Ollama, it runs entirely on your machine — no cloud, no API keys, no data leaving your device.
+Currently supports Markdown files with intelligent chunking that preserves heading structure, metadata-aware retrieval that understands dates, filenames, and note types, and smart routing that distinguishes between personal and technical content. Planned support for PDFs, Word documents, and plain text files.
 
 ## Run
 
@@ -23,3 +27,6 @@ python main.py
 ```bash
 python main.py --reindex
 ```
+
+## WebUI
+Currently in the [test](https://github.com/kryzhh/obsidiangpt/tree/test) branch. Work in progress.
