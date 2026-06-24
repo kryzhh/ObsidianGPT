@@ -29,4 +29,45 @@ python main.py --reindex
 ```
 
 ## WebUI
-Currently in the [test](https://github.com/kryzhh/obsidiangpt/tree/test) branch. Work in progress.
+### Prerequisites
+- Python 3.10+
+- Node.js (v18+ recommended)
+- npm or yarn
+
+#### 1. Clone the repository
+```bash
+git clone https://github.com/kryzhh/ObsidianGPT.git
+cd ObsidianGPT
+git checkout test
+```
+
+#### 2. Backend Setup
+```bash
+cd backend
+python -m venv venv
+```
+
+#### Activate environment
+##### Windows:
+`venv\Scripts\activate`
+##### Mac/Linux:
+`source venv/bin/activate`
+
+```bash
+pip install -r requirements.txt
+
+python app.py
+```
+
+#### 3. Frontend Setup
+#####Open a new terminal:
+
+```bash
+cd frontend
+
+npm install
+npm run dev
+```
+#### 4. Open in Browser
+Go to:
+`http://localhost:5173`
