@@ -2,10 +2,13 @@ from flask import Flask, request, Response
 from flask_cors import CORS
 import json
 
-from rag_service import stream_answer
+from rag_service import stream_answer, init
 
 app = Flask(__name__)
 CORS(app)
+
+# sync vault on startup, then watch for changes in background
+init()
 
 @app.route("/chat", methods=["POST"])
 def chat():
@@ -23,4 +26,6 @@ def index():
     return "Backend running"
 
 if __name__ == "__main__":
-    app.run(port=5000, debug=True)
+    # Using reloader = false else it will spawn a second process which would start a second watcher
+    # double index everything.
+    app.run(port=5000, debug=True, use_reloader=False)

@@ -11,7 +11,7 @@ def format_docs(docs):
     return "\n\n---\n\n".join(parts)
 
 
-def generation(retriever, model, question, stream=False):
+def generation(docs, model, question, stream=False):
     prompt = PromptTemplate.from_template("""
 You are a witty, sarcastic personal assistant who knows the user's Obsidian vault inside out.
 Be conversational and chill without using emojis, like a friend who's read all their notes.
@@ -33,18 +33,22 @@ Answer:
         temperature=0.3
     )
 
-    chain = (
-        {
-            "context": retriever | format_docs,
-            "question": RunnablePassthrough()
-        } | prompt | llm
-    )
+    context = format_docs(docs)
+    
+    # Simple chain, retriever no longer needed
+    chain = prompt | llm
 
     if not stream:
-        return chain.invoke(question)
+        return chain.invoke({
+            "context":context,
+            "question":question
+        })
 
     # Chunk Streaming for that GPT Feel
-    for chunk in chain.stream(question):
+    for chunk in chain.stream({
+        "context":context,
+        "question":question
+    }):
         # chunk is an AIMessageChunk
         if hasattr(chunk, "content") and chunk.content:
             yield chunk.content
