@@ -1,0 +1,92 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: #343541;
+  color: white;
+}
+
+/* Global */
+* {
+  box-sizing: border-box;
+}
+
+/* Remove default root constraints */
+#root {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Typography */
+body {
+  overflow: hidden;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* Markdown content */
+pre {
+  background: #1e1e1e;
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+code {
+  font-family: monospace;
+}
+
+pre code {
+  color: #ddd;
+}
+
+/* Typing animation */
+.typing span {
+  animation: blink 1.4s infinite;
+  font-weight: bold;
+  font-size: 18px;
+  margin: 0 2px;
+}
+
+.typing span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes blink {
+  0% {
+    opacity: 0.2;
+  }
+
+  20% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0.2;
+  }
+}
+
+button:hover {
+  background: #3a3d4a;
+}
+
+pre button {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+pre:hover button {
+  opacity: 1;
+}
+
+#root {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  border: none !important;
+}
