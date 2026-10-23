@@ -1,6 +1,12 @@
 import re
-from datetime import datetime
-from langchain_core.runnables import RunnableLambda
+from collections import defaultdict
+from datetime import date, datetime, timedelta
+
+from indexing.load import load_file
+
+# Whole notes above this size fall back to chunk search within the note, so the prompt stays
+# well inside the chat model's context window (~4 chars per token, NUM_CTX = 8192 tokens)
+MAX_WHOLE_FILE_CHARS = 16000
 
 TECHNICAL_FOLDERS = ["cloud", "dsa", "webd", "projects", "rags"]
 
@@ -45,44 +51,196 @@ def _extract_dates_from_metadata(metadata):
     return {normalize_date(d) for d in dates}
 
 
-def _date_filtered_retriever(vectorstore, normalized_date):
-    # Retrieve broadly, then enforce exact date membership in Python.
-    base_retriever = vectorstore.as_retriever(
-        search_type="similarity",
-        search_kwargs={"k": 20}
-    )
+MONTHS = {
+    "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
+    "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
+    "aug": 8, "august": 8, "sep": 9, "sept": 9, "september": 9, "oct": 10, "october": 10,
+    "nov": 11, "november": 11, "dec": 12, "december": 12,
+}
+# longest first so "sept" wins over "sep"; (?![a-z]) stops "may" matching inside "maybe"
+# while still allowing note-name style dates like "20july2026"
+_MONTH = "(" + "|".join(sorted(MONTHS, key=len, reverse=True)) + r")(?![a-z])\.?"
+_ORD = r"(?:st|nd|rd|th)?"
 
-    def _invoke(query):
-        docs = base_retriever.invoke(query)
-        filtered = [
-            doc for doc in docs
-            if normalized_date in _extract_dates_from_metadata(doc.metadata)
-        ]
-        return filtered[:6]
+_DATE_PATTERNS = [
+    # 20/07/2026, 20-07-2026, 20.07.2026 (day first, matching how notes are indexed)
+    ("dmy", re.compile(r"\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\b")),
+    # 2026-07-20
+    ("ymd", re.compile(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b")),
+    # 20 july 2026, 20th of July, 20july2026, 1 sept
+    ("d_month_y", re.compile(rf"\b(\d{{1,2}}){_ORD}\s*(?:of\s+)?{_MONTH}(?:,?\s*(\d{{4}}))?", re.I)),
+    # July 20, 2026 / July 20th
+    ("month_d_y", re.compile(rf"\b{_MONTH}\s+(\d{{1,2}}){_ORD}\b(?:,?\s*(\d{{4}}))?", re.I)),
+]
 
-    return RunnableLambda(_invoke)
+# Month names that are also everyday words ("may 5 people", "march 3 miles") only count
+# as a month-first date when a year is given
+_AMBIGUOUS_MONTHS = {"may", "mar", "march"}
 
-def retrieve(vectorstore, query):
+
+def extract_date(query, today=None):
+    """Return (day, month, year_or_None) for the first date mentioned in the query, else None.
+
+    Understands numeric dates, written-out dates in either order, ordinals, abbreviations and
+    "today"/"yesterday". Impossible dates (31 June) are ignored.
+    """
+    today = today or date.today()
+    lowered = query.lower()
+
+    if re.search(r"\bday before yesterday\b", lowered):
+        d = today - timedelta(days=2)
+        return d.day, d.month, d.year
+    if re.search(r"\byesterday\b", lowered):
+        d = today - timedelta(days=1)
+        return d.day, d.month, d.year
+    if re.search(r"\btoday\b", lowered):
+        return today.day, today.month, today.year
+
+    for kind, pattern in _DATE_PATTERNS:
+        for match in pattern.finditer(lowered):
+            if kind == "dmy":
+                day, month, year = int(match[1]), int(match[2]), int(match[3])
+            elif kind == "ymd":
+                year, month, day = int(match[1]), int(match[2]), int(match[3])
+            elif kind == "d_month_y":
+                day, month = int(match[1]), MONTHS[match[2]]
+                year = int(match[3]) if match[3] else None
+            else:
+                if match[1] in _AMBIGUOUS_MONTHS and not match[3]:
+                    continue
+                month, day = MONTHS[match[1]], int(match[2])
+                year = int(match[3]) if match[3] else None
+
+            try:
+                # 2000 is a leap year, so a year-less 29 Feb still validates
+                date(year or 2000, month, day)
+            except ValueError:
+                continue
+            return day, month, year
+
+    return None
+
+
+def notes_on_date(vectorstore, when):
+    """Return the filenames of notes dated `when` = (day, month, year_or_None).
+
+    Looks the date up directly in note metadata instead of filtering similarity results,
+    which missed entries that weren't among the nearest matches. Notes whose main date is the
+    requested day come first, then notes that merely mention it. Without a year, the most recent
+    year that has a note for that day is used.
+    """
+    day, month, year = when
+    primary = defaultdict(set)
+    mentioned = defaultdict(set)
+
+    for meta in vectorstore.get(include=["metadatas"])["metadatas"]:
+        filename = meta.get("filename")
+        if not filename:
+            continue
+        if meta.get("date") not in (None, "unknown"):
+            primary[normalize_date(meta["date"])].add(filename)
+        for d in _extract_dates_from_metadata(meta):
+            mentioned[d].add(filename)
+
+    if year:
+        key = f"{day:02d}/{month:02d}/{year}"
+    else:
+        prefix = f"{day:02d}/{month:02d}/"
+        years = [k for k in mentioned if k.startswith(prefix) and k[-4:].isdigit()]
+        key = max(years, key=lambda k: int(k[-4:]), default=None)
+
+    if not key:
+        return []
+    main = sorted(primary.get(key, ()))
+    return main + sorted(mentioned.get(key, set()) - set(main))
+
+
+# Lowercase, treat _ and - as spaces, drop punctuation, collapse whitespace, so
+# "javascript_crud_must_know" and "What's in 'The final unsent letter'?" compare cleanly
+def _normalize_name(text):
+    text = re.sub(r'[_\-]+', ' ', text.lower())
+    text = re.sub(r'[^\w\s]', '', text)
+    return re.sub(r'\s+', ' ', text).strip()
+
+
+def match_filename(vectorstore, query):
+    """Return the indexed filename the query refers to, or None.
+
+    Compares the query against the filenames that actually exist in the vault rather than
+    guessing from sentence structure. A leading article is optional ("final unsent letter"
+    matches "The final unsent letter"). Single-word names like "docker" or "Node" only count
+    when quoted, since as bare words they're usually topics, not references to one note.
+    The longest match wins.
+    """
+    normalized_query = _normalize_name(query)
+    quoted = {_normalize_name(term) for term in re.findall(r'["\']([^"\']+)["\']', query)}
+
+    filenames = {meta.get("filename") for meta in vectorstore.get(include=["metadatas"])["metadatas"]}
+
+    best = None
+    for filename in filenames:
+        if not filename:
+            continue
+        name = _normalize_name(filename)
+        short_name = re.sub(r'^(the|a|an) ', '', name)
+
+        if name in quoted or short_name in quoted:
+            matched = True
+        elif len(short_name.split()) < 2:
+            matched = False
+        else:
+            matched = re.search(rf'\b{re.escape(short_name)}\b', normalized_query) is not None
+
+        if matched and (best is None or len(name) > len(_normalize_name(best))):
+            best = filename
+
+    return best
+
+
+def find_target_notes(vectorstore, query):
+    """Notes the query points at directly, by name or by date. Empty if neither."""
+    filename = match_filename(vectorstore, query)
+    if filename:
+        return [filename]
+
+    when = extract_date(query)
+    return notes_on_date(vectorstore, when) if when else []
+
+
+def load_whole_files(vectorstore, filenames):
+    """Return the full notes with these filenames read fresh from disk, or None.
+
+    Reading the file itself instead of stitching chunks back together gives the model the
+    exact text in order, with no gaps or duplicated chunk overlap, which matters when asked
+    to reproduce a poem or letter. Notes are added in order until MAX_WHOLE_FILE_CHARS; one
+    that doesn't fit is skipped. None means nothing fit, so the caller should fall back to
+    searching inside these notes.
+    """
+    docs = []
+    used = 0
+    for filename in filenames:
+        metadatas = vectorstore.get(where={"filename": filename}, include=["metadatas"])["metadatas"]
+        for source in sorted({meta["source"] for meta in metadatas}):
+            loaded = load_file(source) or []
+            size = sum(len(doc.page_content) for doc in loaded)
+            if loaded and used + size <= MAX_WHOLE_FILE_CHARS:
+                docs.extend(loaded)
+                used += size
+
+    return docs or None
+
+
+def retrieve(vectorstore, query, filenames=None):
     query_lower = query.lower()
 
-    date_match = re.search(r'\b(\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2})\b', query)
     is_personal = any(word in query_lower for word in PERSONAL_KEYWORDS)
     is_technical = any(word in query_lower for word in TECHNICAL_KEYWORDS)
 
-    # check if query mentions a filename directly e.g. "poems" "daily notes" "journal"
-    # we do a broad similarity search but boost with filename filter
-    filename_search = re.search(r'(?:in|from|file|note|called|named)\s+["\']?(\w[\w\s]*?)["\']?(?:\s|$)', query_lower)
-    mentioned_filename = filename_search.group(1).strip() if filename_search else None
-
-    if date_match:
-        normalized = normalize_date(date_match.group(1))
-        return _date_filtered_retriever(vectorstore, normalized)
-
-    elif mentioned_filename:
-        # user mentioned a specific file — filter by filename
+    if filenames:
+        # notes named or dated in the query but too large to send whole: search within them only
         search_kwargs = {
             "k": 6,
-            "filter": {"filename": {"$contains": mentioned_filename}}
+            "filter": {"filename": {"$in": list(filenames)}}
         }
         search_type = "similarity"
 
