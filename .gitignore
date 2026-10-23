@@ -4,8 +4,11 @@ venv/*
 chroma.db
 __pycache__
 index_state.json
+node_modules
+.vscode
 models/
 branch_structure.json
 temp_auto_push.bat
 temp_interactive_push.bat
 .gitignore
+chats.db
