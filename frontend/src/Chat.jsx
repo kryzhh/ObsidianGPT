@@ -1,146 +1,73 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import Message from "./Message";
+import { ArrowDownIcon } from "./icons";
 
-export default function Chat() {
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
+// px from the bottom within which the view keeps following new tokens
+const STICK_THRESHOLD = 80;
 
-  const bottomRef = useRef(null);
+export default function Chat({ messages, onRetry }) {
+  const scrollRef = useRef(null);
+  const stickRef = useRef(true);
+  const userCountRef = useRef(0);
+  const [showJump, setShowJump] = useState(false);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: messages.length < 2 ? "auto" : "smooth" });
-  }, [messages]);
-
-  const sendMessage = async () => {
-    if (!input) return;
-    await new Promise((r) => setTimeout(r, 300));
-
-    const userMessage = { role: "user", content: input };
-    const loadingMessage = { role: "assistant", content: "", loading: true };
-
-    const newMessages = [...messages, userMessage, loadingMessage];
-    setMessages(newMessages);
-    setInput("");
-
-    const res = await fetch("http://localhost:5000/chat", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ message: input }),
-    });
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder("utf-8");
-
-    let botMessage = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      const chunk = decoder.decode(value);
-      const lines = chunk.split("\n");
-
-      for (let line of lines) {
-        if (line.startsWith("data: ")) {
-          const data = JSON.parse(line.replace("data: ", ""));
-          botMessage += data.token;
-
-          setMessages((prev) => {
-            const updated = [...prev];
-            updated[updated.length - 1] = {
-              role: "assistant",
-              content: botMessage,
-              loading: false,
-            };
-            return updated;
-          });
-        }
-      }
-    }
+  const scrollToBottom = (behavior = "auto") => {
+    const el = scrollRef.current;
+    el.scrollTo({ top: el.scrollHeight, behavior });
   };
 
+  // Follow streaming output only while the reader is at the bottom; sending a new
+  // question always snaps back down
+  useEffect(() => {
+    const userCount = messages.filter((msg) => msg.role === "user").length;
+    if (userCount > userCountRef.current) stickRef.current = true;
+    userCountRef.current = userCount;
+
+    if (stickRef.current) scrollToBottom();
+  }, [messages]);
+
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_THRESHOLD;
+    stickRef.current = atBottom;
+    setShowJump(!atBottom);
+  };
+
+  // One polite status for screen readers, announced on state changes rather than per token.
+  // Errors aren't repeated here since the error block itself is role="alert".
+  const last = messages[messages.length - 1];
+  const announcement =
+    last?.role !== "assistant"
+      ? ""
+      : { thinking: "Searching your notes", done: "Answer ready", stopped: "Answer stopped" }[
+          last.status
+        ] || "";
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          display: "flex",
-          justifyContent: "center",
-        }}
-      >
-        <div
-          style={{
-            width: "100%",
-            maxWidth: "800px",
-            padding: "20px",
-          }}
-        >
-          {messages.map((msg, i) => (
-            <Message
-              key={i}
-              role={msg.role}
-              content={msg.content}
-              loading={msg.loading}
-            />
-          ))}
-          <div ref={bottomRef} />
-        </div>
+    <div className="chat-scroll" ref={scrollRef} onScroll={handleScroll}>
+      <p className="sr-only" role="status">
+        {announcement}
+      </p>
+      <div className="chat-column">
+        {messages.map((msg) => (
+          <Message key={msg.id} message={msg} onRetry={onRetry} />
+        ))}
       </div>
 
-      <div
-        style={{
-          borderTop: "none",
-          padding: "15px",
-          display: "flex",
-          justifyContent: "center",
-        }}
-      >
-        <div
-          style={{
-            width: "100%",
-            maxWidth: "800px",
-            display: "flex",
-            gap: "10px",
-          }}
+      {showJump && (
+        <button
+          type="button"
+          className="jump-btn"
+          onClick={() =>
+            scrollToBottom(
+              window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"
+            )
+          }
+          aria-label="Scroll to latest"
         >
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-              }
-            }}
-            placeholder="Message your assistant..."
-            style={{
-              flex: 1,
-              padding: "12px",
-              borderRadius: "8px",
-              border: "1px solid #666",
-              background: "#40414f",
-              color: "white",
-              outline: "none",
-            }}
-          />
-          <button
-            onClick={sendMessage}
-            style={{
-              padding: "12px 16px",
-              borderRadius: "8px",
-              border: "none",
-              background: "#0b93f6",
-              color: "white",
-              cursor: "pointer",
-            }}
-          >
-            Send
-          </button>
-        </div>
-      </div>
+          <ArrowDownIcon />
+        </button>
+      )}
     </div>
   );
 }

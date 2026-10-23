@@ -8,9 +8,11 @@ import threading
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from retrieval.retrieval import retrieve
-from retrieval.multi_query import multi_query_retrieve
+from retrieval.retrieval import retrieve, find_target_notes, load_whole_files
+from retrieval.rag_fusion import rag_fusion_retrieve
+from retrieval.multi_query import generate_queries
 from generation.generation import generation
+from generation.history import format_history
 from indexing.load import load_file
 from indexing.chunk import chunk
 from langchain_community.vectorstores import Chroma
@@ -181,15 +183,36 @@ def init(force_reindex=False):
         
     _start_watcher()
 
-def stream_answer(query: str):
+def stream_answer(query: str, history=None):
+    """Yield {"sources": [...]} once, then {"token": ...} events.
+
+    `history` is the chat's earlier messages (see chat_store.get_messages).
+    """
     with _vs_lock:
         vs = _vs_box["vectorstore"]
 
     if vs is None:
-        yield "Still indexing your vault, please wait a moment and try again."
+        yield {"token": "Still indexing your vault, please wait a moment and try again."}
         return
 
-    retriever = retrieve(vs, query)
-    docs = multi_query_retrieve(query, retriever, model)
-    for chunk_text in generation(docs, model, query, stream=True):
-        yield chunk_text
+    # In a conversation, retrieve with a standalone rewrite of the question (made in the same
+    # LLM call as the paraphrases) so follow-ups like "show me all of it" find the right notes
+    transcript = format_history(history) if history else None
+    queries = generate_queries(query, model, transcript) if transcript else None
+    standalone = queries[0] if queries else query
+
+    # Notes the question names or dates ("20 july 2026") are sent whole; otherwise, or if they're
+    # too large, fall back to search (limited to those notes when there are any)
+    targets = find_target_notes(vs, standalone) or (
+        find_target_notes(vs, query) if standalone != query else []
+    )
+    docs = load_whole_files(vs, targets) if targets else None
+
+    if not docs:
+        retriever = retrieve(vs, standalone, targets)
+        docs = rag_fusion_retrieve(queries or generate_queries(standalone, model), retriever)
+
+    yield {"sources": list(dict.fromkeys(doc.metadata.get("filename") for doc in docs))}
+
+    for chunk_text in generation(docs, model, query, transcript, stream=True):
+        yield {"token": chunk_text}
