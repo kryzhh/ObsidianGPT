@@ -1,6 +1,10 @@
-# ObsidianGPT
+# Mockingbird 
 
-Local RAG chat over an Obsidian vault.
+**What if you could talk to your second brain?**
+
+
+Mockingbird is a local-first AI assistant that lets you have natural conversations with your personal knowledge base. Built on a RAG (Retrieval-Augmented Generation) pipeline using LangChain, ChromaDB, and Ollama, it runs entirely on your machine — no cloud, no API keys, no data leaving your device.
+Currently supports Markdown files with intelligent chunking that preserves heading structure, metadata-aware retrieval that understands dates, filenames, and note types, and smart routing that distinguishes between personal and technical content. Planned support for PDFs, Word documents, and plain text files.
 
 ## Run
 
@@ -23,3 +27,47 @@ python main.py
 ```bash
 python main.py --reindex
 ```
+
+## WebUI
+### Prerequisites
+- Python 3.10+
+- Node.js (v18+ recommended)
+- npm or yarn
+
+#### 1. Clone the repository
+```bash
+git clone https://github.com/kryzhh/ObsidianGPT.git
+cd ObsidianGPT
+git checkout test
+```
+
+#### 2. Backend Setup
+```bash
+cd backend
+python -m venv venv
+```
+
+#### Activate environment
+##### Windows:
+`venv\Scripts\activate`
+##### Mac/Linux:
+`source venv/bin/activate`
+
+```bash
+pip install -r requirements.txt
+
+python app.py
+```
+
+#### 3. Frontend Setup
+##### Open a new terminal:
+
+```bash
+cd frontend
+
+npm install
+npm run dev
+```
+#### 4. Open in Browser
+Go to:
+`http://localhost:5173`

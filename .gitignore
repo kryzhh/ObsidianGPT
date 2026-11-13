@@ -4,4 +4,7 @@ venv/*
 chroma.db
 __pycache__
 index_state.json
+node_modules
 models/
+chats.db
+config.bat
